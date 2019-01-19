@@ -1,0 +1,9 @@
+{
+    "files.exclude": {
+        "Build": true,
+        "Tools": true,
+    },
+    "files.associations": {
+        "cstdio": "cpp"
+    }
+}
