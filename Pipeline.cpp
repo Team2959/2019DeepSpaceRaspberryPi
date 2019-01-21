@@ -1,12 +1,30 @@
+#include <networktables/NetworkTableInstance.h>
 #include <vision/VisionPipeline.h>
 #include <iostream>
 
 #include "Pipeline.hpp"
+#include "../2019RaspPIRoboRioShared/SharedNames.h"
+
+Pipeline::Pipeline(std::shared_ptr<nt::NetworkTable> networkTable)
+{
+    _networkTable = networkTable;
+}
 
 void Pipeline::Process(cv::Mat& mat)
 {
     ++_value;
-    std::cout << "Frame #" << _value << " Received\n" << std::flush;
+
+    _networkTable->PutNumber(FRAME_NUMBER, _value);
+
+std::vector<double> numbers;
+numbers.push_back(0.0);
+numbers.push_back(1.0);
+numbers.push_back(2.0);
+numbers.push_back(3.0);
+
+    _networkTable->PutNumberArray(TARGET_COORDS, numbers);
+
+
 }
 
 /*

@@ -20,6 +20,7 @@
 
 #include "cameraserver/CameraServer.h"
 #include "Pipeline.hpp"
+#include "../2019RaspPIRoboRioShared/SharedNames.h"
 
 /*
    JSON format:
@@ -210,7 +211,7 @@ int main(int argc, char* argv[])
   // start image processing on camera 0 if present
   if (cameras.size() >= 1) {
     std::thread([&] {
-      frc::VisionRunner<Pipeline> runner(cameras[0], new Pipeline(),
+      frc::VisionRunner<Pipeline> runner(cameras[0], new Pipeline(ntinst.GetTable(TABLE_NAME)),
                                            [&](Pipeline &pipeline) {
         // do something with pipeline results
       });
