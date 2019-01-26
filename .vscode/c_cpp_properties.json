@@ -4,14 +4,15 @@
             "name": "Gcc",
             "includePath": [
                 "${workspaceFolder}/**",
-                "${workspaceFolder}/include/**"
+                "${workspaceFolder}/Tools/include/**",
+                "${workspaceFolder}/Tools/raspbian9/include/**"
             ],
             "defines": [
                 "_DEBUG",
                 "UNICODE",
                 "_UNICODE"
             ],
-            "compilerPath": "raspbian9\\bin\\arm-raspbian9-linux-gnueabihf-c++.exe",
+            "compilerPath": "${workspaceFolder}/Tools/raspbian9/bin/arm-raspbian9-linux-gnueabihf-c++.exe",
             "cStandard": "c11",
             "cppStandard": "c++17",
             "intelliSenseMode": "clang-x64"

@@ -51,14 +51,15 @@ void Pipeline::IncrementFrameNumber()
     ++m_frameNumber;
     std::cout << "Frame Number = " << m_frameNumber << '\n';
     m_networkTable->PutNumber(FRAME_NUMBER, m_frameNumber);
+
+    // Flush cout since we are on a separate thread here.
+    std::cout.flush();                       
 }
 
 void Pipeline::Process(cv::Mat& mat)
 {
     IncrementFrameNumber();
     FindCargo(mat);
-
-    std::cout.flush();                       // Flush cout since we are on a separate thread here.
 }
 
 /*
