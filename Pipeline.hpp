@@ -5,6 +5,9 @@ class Pipeline : public frc::VisionPipeline
         virtual void Process(cv::Mat& mat) override;
 
     private:
-        std::shared_ptr<nt::NetworkTable>   _networkTable;
-        int _value{ 0 };
+        void FindCargo(cv::Mat& mat);
+        void IncrementFrameNumber();
+
+        std::shared_ptr<nt::NetworkTable>   m_networkTable;
+        int                                 m_frameNumber{ 0 };
 };

@@ -1,49 +1,25 @@
 #include <networktables/NetworkTableInstance.h>
 #include <vision/VisionPipeline.h>
 #include <iostream>
-
+#include <opencv2/core/mat.hpp>
+#include <opencv2/imgproc.hpp>
 #include "Pipeline.hpp"
 #include "../2019RaspPIRoboRioShared/SharedNames.h"
 
-Pipeline::Pipeline(std::shared_ptr<nt::NetworkTable> networkTable)
+Pipeline::Pipeline(std::shared_ptr<nt::NetworkTable> networkTable) : m_networkTable{ networkTable } { }
+
+void Pipeline::FindCargo(cv::Mat& mat)
 {
-    _networkTable = networkTable;
-}
-
-void Pipeline::Process(cv::Mat& mat)
-{
-    ++_value;
-
-    _networkTable->PutNumber(FRAME_NUMBER, _value);
-
-std::vector<double> numbers;
-numbers.push_back(0.0);
-numbers.push_back(1.0);
-numbers.push_back(2.0);
-numbers.push_back(3.0);
-
-    _networkTable->PutNumberArray(TARGET_COORDS, numbers);
-
-
-}
-
-/*
-
-void FindOrange()
-{
-    // read the image from a file (can be from a live frame of camera data)
-    auto    image{imread("FindOrange.bmp",CV_LOAD_IMAGE_COLOR)};
-    Mat     converted;
+    cv::Mat hsvImage;
 
     // convert from Red-Green-Blue to Hue-Saturation-Value
-    cvtColor(image, converted, ColorConversionCodes::COLOR_BGR2HSV);
+    cv::cvtColor(mat, hsvImage, cv::ColorConversionCodes::COLOR_BGR2HSV);
 
-    imwrite("o1.bmp", converted);
-
+/*
     //  Find only pixel that are in range of the HSV value
     //   in this case orange (0-60) with all saturations and upper have values
-    Mat     threshold;
-    inRange(converted, cv::Scalar(0, 0, 128), cv::Scalar(60, 255, 255), threshold);
+    cv::Mat     threshold;
+    cv::inRange(hsvImage, cv::Scalar(0, 0, 128), cv::Scalar(60, 255, 255), threshold);
 
     imwrite("o2.bmp", threshold);
 
@@ -67,8 +43,35 @@ void FindOrange()
 
     output.close();
 
-    imwrite("o4.bmp", image);
+    imwrite("o4.bmp", image); */
 }
+
+void Pipeline::IncrementFrameNumber()
+{
+    ++m_frameNumber;
+    std::cout << "Frame Number = " << m_frameNumber << '\n';
+    m_networkTable->PutNumber(FRAME_NUMBER, m_frameNumber);
+}
+
+void Pipeline::Process(cv::Mat& mat)
+{
+    IncrementFrameNumber();
+    FindCargo(mat);
+
+    std::cout.flush();                       // Flush cout since we are on a separate thread here.
+}
+
+/*
+    std::vector<double> numbers;
+    numbers.push_back(0.25);
+    numbers.push_back(0.3);
+    numbers.push_back(0.5);
+    numbers.push_back(0.15);
+
+    _networkTable->PutNumberArray(TARGET_COORDS, numbers);
+*/
+
+/*
 
 void FindRectangles()
 {
