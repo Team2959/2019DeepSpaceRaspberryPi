@@ -5,25 +5,18 @@
 /* the project.                                                               */
 /*----------------------------------------------------------------------------*/
 
-#include <cstdio>
-#include <memory>
-#include <string>
-#include <thread>
-#include <vector>
-
+#include <cameraserver/CameraServer.h>
+#include <networktables/EntryListenerFlags.h>
 #include <networktables/NetworkTableInstance.h>
-#include <vision/VisionPipeline.h>
+#include <opencv2/opencv.hpp>
 #include <vision/VisionRunner.h>
-#include <wpi/StringRef.h>
 #include <wpi/json.h>
 #include <wpi/raw_istream.h>
 #include <wpi/raw_ostream.h>
-
-#include "cameraserver/CameraServer.h"
-#include "Pipeline.hpp"
 #include "../2019RaspPIRoboRioShared/SharedNames.h"
+#include "Pipeline.hpp"
 
-namespace
+namespace Rpi2959
 {
   struct CameraConfig
   {
@@ -38,6 +31,8 @@ namespace
   static bool                       server{ false };
   static std::vector<CameraConfig>  cameraConfigs;
 
+  Pipeline CreatePipeline(size_t index, std::shared_ptr<nt::NetworkTable> networkTable);
+  std::string GetValueText(std::shared_ptr<nt::Value> value);
   wpi::raw_ostream& ParseError();
   bool ReadCameraConfig(const wpi::json& config);
   bool ReadConfig();
@@ -46,35 +41,62 @@ namespace
 
 int main(int argc, char* argv[]) 
 {
-  configFile = (argc >= 2) ? argv[1] : "/boot/frc.json";
+  Rpi2959::configFile = (argc >= 2) ? argv[1] : "/boot/frc.json";
 
   // read configuration
-  if (!ReadConfig())
+  if (!Rpi2959::ReadConfig())
     return EXIT_FAILURE;
 
   // start NetworkTables
   auto ntinst{ nt::NetworkTableInstance::GetDefault() };
-  if (server)
+  if (Rpi2959::server)
   {
     wpi::outs() << "Setting up NetworkTables server\n";
     ntinst.StartServer();
   } 
   else
   {
-    wpi::outs() << "Setting up NetworkTables client for team " << team << '\n';
-    ntinst.StartClientTeam(team);
+    wpi::outs() << "Setting up NetworkTables client for team " << Rpi2959::team << '\n';
+    ntinst.StartClientTeam(Rpi2959::team);
   }
 
   // start processing threads with a camera and pipeline for each
   std::vector<std::thread>      threads;
-  std::shared_ptr<NetworkTable> networkTable{ ntinst.GetTable(TABLE_NAME) };
-  for (auto& cameraConfig : cameraConfigs)
-    threads.emplace_back(std::thread([cameraConfig, networkTable]
+  std::shared_ptr<NetworkTable> networkTable{ ntinst.GetTable(Rpi2959Shared::Tables::TableName) };
+
+  networkTable->AddEntryListener([](auto table, auto name, auto entry, auto value, auto flags)
+  {
+    auto& outs{ wpi::outs() };
+    if(flags & nt::EntryListenerFlags::kDelete)
     {
-      auto      camera{StartCamera(cameraConfig)};
-      Pipeline  pipeline{networkTable};
-      frc::VisionRunner<Pipeline>{std::move(camera), &pipeline, [](Pipeline &p){ p.SendResults(); }}.RunForever();
+      outs << "Key Deleted - " << name << '\n';
+      outs.flush();
+      return;
+    }
+    if(flags & nt::EntryListenerFlags::kNew)
+    {
+      outs << "Key Added - " << name << " = " << Rpi2959::GetValueText(value) << '\n';
+      outs.flush();
+      return;
+    }
+    if(flags & nt::EntryListenerFlags::kUpdate)
+    {
+      outs << "Key Updated - " << name << " = " << Rpi2959::GetValueText(value) << '\n';
+      outs.flush();
+      return;
+    }
+  }, nt::EntryListenerFlags::kLocal | nt::EntryListenerFlags::kNew | nt::EntryListenerFlags::kUpdate | nt::EntryListenerFlags::kDelete);
+
+  for(auto i = 0U; i < Rpi2959::cameraConfigs.size(); ++i)
+    threads.emplace_back(std::thread([i, &cameraConfig = Rpi2959::cameraConfigs[i], &networkTable]
+    {
+      auto  pipeline{ Rpi2959::CreatePipeline(i, networkTable) };
+      frc::VisionRunner<decltype(pipeline)>{StartCamera(cameraConfig), &pipeline, [](decltype(pipeline) &p){ }}.RunForever();
     }));
+
+  if(Rpi2959::server)
+      networkTable->PutNumber(Rpi2959Shared::Keys::FrontTargets, 15.0);
+
   for(auto& thread : threads)
     thread.join();
   return EXIT_SUCCESS;
@@ -115,9 +137,49 @@ int main(int argc, char* argv[])
    }
  */
 
-namespace
+namespace Rpi2959
 {
   wpi::raw_ostream& ParseError() { return wpi::errs() << "config error in '" << configFile << "': "; }
+
+  Pipeline CreatePipeline(size_t index, std::shared_ptr<nt::NetworkTable> networkTable)
+  {
+    switch(index)
+    {
+      case 0:
+        return Pipeline{networkTable, Rpi2959Shared::Keys::FrontTargets,
+          Rpi2959Shared::Keys::FrontFrameNumber,  Rpi2959Shared::Keys::FrontCargoResults,
+          Rpi2959Shared::Keys::FrontFloorTapeResults,  Rpi2959Shared::Keys::FrontHatchResults,
+          Rpi2959Shared::Keys::FrontPortTapeResults};
+      case 1:
+        return Pipeline{networkTable, Rpi2959Shared::Keys::BackTargets,
+          Rpi2959Shared::Keys::BackFrameNumber,  Rpi2959Shared::Keys::BackCargoResults,
+          Rpi2959Shared::Keys::BackFloorTapeResults,  Rpi2959Shared::Keys::BackHatchResults,
+          Rpi2959Shared::Keys::BackPortTapeResults};
+      default:
+        throw std::runtime_error{"Invalid camera index"};
+    }
+  }
+
+  std::string GetValueText(std::shared_ptr<nt::Value> value)
+  {
+    if(value->type() == NT_Type::NT_DOUBLE)
+      return std::to_string(value->GetDouble());
+    if(value->type() == NT_Type::NT_DOUBLE_ARRAY)
+    {
+      auto  values{value->GetDoubleArray()};
+      std::stringstream ss;
+      ss << "{";
+      if(size(values) >0)
+      {
+        ss << values[0];
+        for(auto i = 1; i < size(values); ++i)
+          ss << ", " << values[i];
+      }
+      ss << "}";
+      return ss.str();
+    }
+    return "Unknown";
+  }
 
   bool ReadCameraConfig(const wpi::json& config)
   {

@@ -1,97 +1,74 @@
-#include <chrono>
-#include <networktables/NetworkTableInstance.h>
-#include <opencv2/core/mat.hpp>
-#include <opencv2/imgproc.hpp>
+//*****************************************************************************
+//*                                                                           *
+//* Pipeline.cpp - Pipeline class definition.                                 *
+//*                                                                           *
+//*****************************************************************************
+
+#include <networktables/NetworkTable.h>
+#include <opencv2/opencv.hpp>
 #include <vision/VisionPipeline.h>
-#include <wpi/raw_ostream.h>
-#include "Pipeline.hpp"
 #include "../2019RaspPIRoboRioShared/SharedNames.h"
+#include "Pipeline.hpp"
 
-Pipeline::Pipeline(std::shared_ptr<nt::NetworkTable> networkTable) : m_networkTable{ networkTable } { }
+Rpi2959::Pipeline::Pipeline(std::shared_ptr<nt::NetworkTable> networkTable, wpi::StringRef targetsKey,
+  wpi::StringRef frameNumberKey, wpi::StringRef cargoResultsKey, wpi::StringRef floorTapeResultsKey,
+  wpi::StringRef hatchResultsKey, wpi::StringRef portTapeResultsKey) :
+  m_networkTable{ std::move(networkTable) }, m_targetsKey{ std::move(targetsKey) },
+  m_frameNumberKey{ std::move( frameNumberKey) }, m_cargoResultsKey{ std::move( cargoResultsKey ) },
+  m_floorTapeResultsKey{ std::move( floorTapeResultsKey ) },
+  m_hatchResultsKey{ std::move( hatchResultsKey ) },
+  m_portTapeResultsKey{ std::move( portTapeResultsKey ) } { }
 
-void Pipeline::FindCargo(cv::Mat& mat)
+cv::Rect2d Rpi2959::Pipeline::FindCargo(const cv::Mat& mat)
 {
-    auto&   outs{ wpi::outs() };
-
-    outs << "FindCargo\n";
-
     cv::Mat hsvImage;
 
     // convert from Red-Green-Blue to Hue-Saturation-Value
     cv::cvtColor(mat, hsvImage, cv::ColorConversionCodes::COLOR_BGR2HSV);
 
-/*
     //  Find only pixel that are in range of the HSV value
-    //   in this case orange (0-60) with all saturations and upper have values
+    //   in this case orange (0-60) with upper half saturations and upper half values
     cv::Mat     threshold;
-    cv::inRange(hsvImage, cv::Scalar(0, 0, 128), cv::Scalar(60, 255, 255), threshold);
+    cv::inRange(hsvImage, cv::Scalar(0, 128, 128), cv::Scalar(60, 255, 255), threshold);
 
-    imwrite("o2.bmp", threshold);
-
-    std::vector<std::vector<cv::Point> > contours;
+    std::vector<std::vector<cv::Point>> contours;
 
     // get the bounding pixels for each area that were the in range 
     cv::findContours(threshold, contours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
 
-    std::ofstream    output{"o3.txt"};
+    cv::Rect    largestRect;
 
     for(auto& contour : contours)
     {
-        // change the contour pixels to be a rectangle
-        auto    rect{cv::boundingRect(contour)};
-
-        // draw the rectangle on the original image
-        cv::rectangle(image, rect, cv::Scalar(255, 0, 0), 4);
-
-        output << rect.x << ',' << rect.y << ',' << rect.width << ',' << rect.height << "\r\n";
-    } 
-
-    output.close();
-
-    imwrite("o4.bmp", image); */
+        auto    rect{cv::boundingRect(contour)};    // change the contour pixels to be a rectangle
+        if(largestRect.area() < rect.area())        // keep the largest rect
+            largestRect = rect;
+    }
+    
+    // Convert largest rect in pixel offset coordinates to frame relative coordinates.
+    return GetRelativeRect(largestRect, mat);
 }
 
-void Pipeline::IncrementFrameNumber()
+cv::Point2d Rpi2959::Pipeline::GetRelativePoint(const cv::Point& point, const cv::Mat& mat)
 {
-    auto&   outs{ wpi::outs() };
-
-    outs << "IncrementFrameNumber\n";
-    ++m_frameNumber;
+    return cv::Point2d{ static_cast<double>(point.x) / mat.cols, static_cast<double>(point.y) / mat.rows };
 }
 
-void Pipeline::Process(cv::Mat& mat)
+cv::Rect2d Rpi2959::Pipeline::GetRelativeRect(const cv::Rect& rect, const cv::Mat& mat)
 {
-    auto&   outs{ wpi::outs() };
-
-    outs << "****\n";
-    auto    start{std::chrono::high_resolution_clock::now()};
-    IncrementFrameNumber();
-    FindCargo(mat);
-    auto    elapsedTime{std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start)};
-
-    outs << "Elapsed Time:  " << elapsedTime.count() << "\n----\n";
+    return cv::Rect2d{ static_cast<double>(rect.x) / mat.cols, static_cast<double>(rect.y) / mat.rows,
+        static_cast<double>(rect.width) / mat.cols, static_cast<double>(rect.height) / mat.rows };
 }
 
-void Pipeline::SendResults()
+void Rpi2959::Pipeline::Process(cv::Mat& mat)
 {
-    auto&   outs{ wpi::outs() };
-
-    outs << "Frame Number = " << m_frameNumber << '\n';
-    m_networkTable->PutNumber(FRAME_NUMBER, m_frameNumber);
-
-    // Flush cout since we are on a separate thread here.
-    outs.flush();                       
+    m_networkTable->PutNumber(m_frameNumberKey, ++m_frameNumber);
+    auto    targets{ static_cast<Rpi2959Shared::ProcessingTargets>(m_networkTable->GetNumber(m_targetsKey, 0.0)) };
+    if((targets & Rpi2959Shared::ProcessingTargets::Cargo) == Rpi2959Shared::ProcessingTargets::Cargo)
+        m_networkTable->PutNumberArray(m_cargoResultsKey, AsArrayRef(FindCargo(mat)));
+    else
+        m_networkTable->Delete(m_cargoResultsKey);
 }
-
-/*
-    std::vector<double> numbers;
-    numbers.push_back(0.25);
-    numbers.push_back(0.3);
-    numbers.push_back(0.5);
-    numbers.push_back(0.15);
-
-    _networkTable->PutNumberArray(TARGET_COORDS, numbers);
-*/
 
 /*
 
