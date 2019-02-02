@@ -4,6 +4,11 @@
         "Tools": true,
     },
     "files.associations": {
-        "cstdio": "cpp"
+        "cstdio": "cpp",
+        "thread": "cpp",
+        "atomic": "cpp",
+        "exception": "cpp",
+        "system_error": "cpp",
+        "chrono": "cpp"
     }
 }

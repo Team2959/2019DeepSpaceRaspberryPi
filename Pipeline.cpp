@@ -1,8 +1,9 @@
+#include <chrono>
 #include <networktables/NetworkTableInstance.h>
-#include <vision/VisionPipeline.h>
-#include <iostream>
 #include <opencv2/core/mat.hpp>
 #include <opencv2/imgproc.hpp>
+#include <vision/VisionPipeline.h>
+#include <wpi/raw_ostream.h>
 #include "Pipeline.hpp"
 #include "../2019RaspPIRoboRioShared/SharedNames.h"
 
@@ -10,6 +11,10 @@ Pipeline::Pipeline(std::shared_ptr<nt::NetworkTable> networkTable) : m_networkTa
 
 void Pipeline::FindCargo(cv::Mat& mat)
 {
+    auto&   outs{ wpi::outs() };
+
+    outs << "FindCargo\n";
+
     cv::Mat hsvImage;
 
     // convert from Red-Green-Blue to Hue-Saturation-Value
@@ -48,18 +53,34 @@ void Pipeline::FindCargo(cv::Mat& mat)
 
 void Pipeline::IncrementFrameNumber()
 {
-    ++m_frameNumber;
-    std::cout << "Frame Number = " << m_frameNumber << '\n';
-    m_networkTable->PutNumber(FRAME_NUMBER, m_frameNumber);
+    auto&   outs{ wpi::outs() };
 
-    // Flush cout since we are on a separate thread here.
-    std::cout.flush();                       
+    outs << "IncrementFrameNumber\n";
+    ++m_frameNumber;
 }
 
 void Pipeline::Process(cv::Mat& mat)
 {
+    auto&   outs{ wpi::outs() };
+
+    outs << "****\n";
+    auto    start{std::chrono::high_resolution_clock::now()};
     IncrementFrameNumber();
     FindCargo(mat);
+    auto    elapsedTime{std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start)};
+
+    outs << "Elapsed Time:  " << elapsedTime.count() << "\n----\n";
+}
+
+void Pipeline::SendResults()
+{
+    auto&   outs{ wpi::outs() };
+
+    outs << "Frame Number = " << m_frameNumber << '\n';
+    m_networkTable->PutNumber(FRAME_NUMBER, m_frameNumber);
+
+    // Flush cout since we are on a separate thread here.
+    outs.flush();                       
 }
 
 /*
