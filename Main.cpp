@@ -81,8 +81,8 @@ int main(int argc, char* argv[])
     }
     if(flags & nt::EntryListenerFlags::kUpdate)
     {
-      outs << "Key Updated - " << name << " = " << Rpi2959::GetValueText(value) << '\n';
-      outs.flush();
+        outs << "Key Updated - " << name << " = " << Rpi2959::GetValueText(value) << '\n';
+        outs.flush();
       return;
     }
   }, nt::EntryListenerFlags::kLocal | nt::EntryListenerFlags::kNew | nt::EntryListenerFlags::kUpdate | nt::EntryListenerFlags::kDelete);

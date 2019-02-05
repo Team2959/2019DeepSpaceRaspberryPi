@@ -9,6 +9,23 @@
         "atomic": "cpp",
         "exception": "cpp",
         "system_error": "cpp",
-        "chrono": "cpp"
+        "chrono": "cpp",
+        "*.tcc": "cpp",
+        "clocale": "cpp",
+        "cstdint": "cpp",
+        "ctime": "cpp",
+        "cwchar": "cpp",
+        "cwctype": "cpp",
+        "deque": "cpp",
+        "list": "cpp",
+        "unordered_map": "cpp",
+        "fstream": "cpp",
+        "iomanip": "cpp",
+        "istream": "cpp",
+        "ratio": "cpp",
+        "sstream": "cpp",
+        "streambuf": "cpp",
+        "type_traits": "cpp",
+        "typeinfo": "cpp"
     }
 }
