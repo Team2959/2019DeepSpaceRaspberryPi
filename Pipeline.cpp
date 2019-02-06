@@ -51,7 +51,7 @@ cv::Rect2d Rpi2959::Pipeline::FindCargo(const cv::Mat& mat)
 
 std::tuple<cv::Point2d, cv::Point2d> Rpi2959::Pipeline::FindFloorTape(const cv::Mat& mat)
 {
-
+return std::make_tuple(cv::Point2d{}, cv::Point2d{});
 }
 
 std::tuple<cv::Point2d, cv::Point2d> Rpi2959::Pipeline::FindPortTape(const cv::Mat& mat)
@@ -59,6 +59,15 @@ std::tuple<cv::Point2d, cv::Point2d> Rpi2959::Pipeline::FindPortTape(const cv::M
 /*    // Convert to grayscale
     cv::Mat gray;
     cv::cvtColor(mat, gray, CV_BGR2GRAY); */
+
+    // Angle boundaries for differentiating between left and right
+    constexpr double LeftSideAngle = -67.5;
+    constexpr double RightSideAngle = -22.5;
+    constexpr double AngleRange = 15.0;
+    constexpr double LeftSideAngleMin = LeftSideAngle - AngleRange ;
+    constexpr double LeftSideAngleMax = LeftSideAngle + AngleRange ;
+    constexpr double RightSideAngleMin = RightSideAngle - AngleRange ;
+    constexpr double RightSideAngleMax = RightSideAngle + AngleRange ;
 
     cv::Mat hsvImage;
 
@@ -79,8 +88,6 @@ std::tuple<cv::Point2d, cv::Point2d> Rpi2959::Pipeline::FindPortTape(const cv::M
     float           leftArea{ 0.0f };
     float           rightArea{ 0.0f };
 
-std::cout << "Tape Contours - " << contours.size() << '\n';
-std::cout.flush();
     // Go through each countor
     for(auto& contour : contours)
     {
@@ -92,21 +99,16 @@ std::cout.flush();
         rotatedRect.points( rect_points.data() );
 
         auto    orientedPoints{ GetOrientedPoints(rect_points) };
-
-        if((orientedPoints.TopPoint.x - orientedPoints.LeftPoint.x) > 
-            (orientedPoints.RightPoint.x - orientedPoints.TopPoint.x))
-            rotatedRect.angle += 90.0;
-
         auto    rectArea{GetArea(orientedPoints)};
         
         // See if rect is a left side tape image
-        if((rotatedRect.angle >= 30)&&(rotatedRect.angle <= 60))
+        if((LeftSideAngleMin <= rotatedRect.angle)&&(rotatedRect.angle <= LeftSideAngleMax))
         {
             if(rectArea > leftArea)
                 leftTape = rotatedRect;
         }
         // See if rect is a right side tape image
-        else if((rotatedRect.angle >= -60)&&(rotatedRect.angle <= -30))
+        else if((RightSideAngleMin <= rotatedRect.angle)&&(rotatedRect.angle <= RightSideAngleMax))
         {
             if(rectArea > rightArea)
                 rightTape = rotatedRect;
@@ -117,6 +119,7 @@ std::cout.flush();
 
 cv::Rect2d Rpi2959::Pipeline::FindHatch(const cv::Mat& mat)
 {
+    return cv::Rect2d{};
 
 }
 

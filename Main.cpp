@@ -66,6 +66,10 @@ int main(int argc, char* argv[])
 
   networkTable->AddEntryListener([](auto table, auto name, auto entry, auto value, auto flags)
   {
+    /*std::string s{name};
+
+     if((s.find("FrameNumber") != -1)||(s.find("CargoResults") != -1))
+      return; */
     auto& outs{ wpi::outs() };
     if(flags & nt::EntryListenerFlags::kDelete)
     {
@@ -95,7 +99,7 @@ int main(int argc, char* argv[])
     }));
 
   if(Rpi2959::server)
-      networkTable->PutNumber(Rpi2959Shared::Keys::FrontTargets, 15.0);
+      networkTable->PutNumber(Rpi2959Shared::Keys::FrontTargets, (double)Rpi2959Shared::ProcessingTargets::PortTape);
 
   for(auto& thread : threads)
     thread.join();
