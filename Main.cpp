@@ -31,7 +31,8 @@ namespace Rpi2959
   static bool                       server{ false };
   static std::vector<CameraConfig>  cameraConfigs;
 
-  Pipeline CreatePipeline(size_t index, std::shared_ptr<nt::NetworkTable> networkTable);
+  Pipeline CreatePipeline(std::string name, std::shared_ptr<nt::NetworkTable> networkTable);
+  Pipeline CreatePipeline(bool isFront, std::shared_ptr<nt::NetworkTable> networkTable);
   std::string GetValueText(std::shared_ptr<nt::Value> value);
   wpi::raw_ostream& ParseError();
   bool ReadCameraConfig(const wpi::json& config);
@@ -48,61 +49,70 @@ int main(int argc, char* argv[])
     return EXIT_FAILURE;
 
   // start NetworkTables
-  auto ntinst{ nt::NetworkTableInstance::GetDefault() };
+  auto  ntinst{ nt::NetworkTableInstance::GetDefault() };
+  auto& outs{ wpi::outs() };
   if (Rpi2959::server)
   {
-    wpi::outs() << "Setting up NetworkTables server\n";
+    outs << "Setting up NetworkTables server\n";
     ntinst.StartServer();
   } 
   else
   {
-    wpi::outs() << "Setting up NetworkTables client for team " << Rpi2959::team << '\n';
+    outs << "Setting up NetworkTables client for team " << Rpi2959::team << '\n';
     ntinst.StartClientTeam(Rpi2959::team);
   }
 
-  // start processing threads with a camera and pipeline for each
-  std::vector<std::thread>      threads;
+  // This the Network Table which we use to pull configuration and send results to the
   std::shared_ptr<NetworkTable> networkTable{ ntinst.GetTable(Rpi2959Shared::Tables::TableName) };
 
-  networkTable->AddEntryListener([](auto table, auto name, auto entry, auto value, auto flags)
+  // This is testing code that just outputs the results that are put into Network Tables.
+  // This does not need to be in the final release, once debugging is complete
+  auto  listener{ networkTable->AddEntryListener([&outs](auto table, auto name, auto entry, auto value, auto flags)
   {
     /*std::string s{name};
 
      if((s.find("FrameNumber") != -1)||(s.find("CargoResults") != -1))
       return; */
-    auto& outs{ wpi::outs() };
     if(flags & nt::EntryListenerFlags::kDelete)
-    {
-      outs << "Key Deleted - " << name << '\n';
-      outs.flush();
-      return;
-    }
-    if(flags & nt::EntryListenerFlags::kNew)
-    {
-      outs << "Key Added - " << name << " = " << Rpi2959::GetValueText(value) << '\n';
-      outs.flush();
-      return;
-    }
-    if(flags & nt::EntryListenerFlags::kUpdate)
-    {
-        outs << "Key Updated - " << name << " = " << Rpi2959::GetValueText(value) << '\n';
-        outs.flush();
-      return;
-    }
-  }, nt::EntryListenerFlags::kLocal | nt::EntryListenerFlags::kNew | nt::EntryListenerFlags::kUpdate | nt::EntryListenerFlags::kDelete);
+      (outs << "Key Deleted - " << name << '\n').flush();
+    else if(flags & nt::EntryListenerFlags::kNew)
+      (outs << "Key Added - " << name << " = " << Rpi2959::GetValueText(value) << '\n').flush();
+    else if(flags & nt::EntryListenerFlags::kUpdate)
+      (outs << "Key Updated - " << name << " = " << Rpi2959::GetValueText(value) << '\n').flush();
+  }, nt::EntryListenerFlags::kLocal | nt::EntryListenerFlags::kNew | nt::EntryListenerFlags::kUpdate | nt::EntryListenerFlags::kDelete) };
 
-  for(auto i = 0U; i < Rpi2959::cameraConfigs.size(); ++i)
-    threads.emplace_back(std::thread([i, &cameraConfig = Rpi2959::cameraConfigs[i], &networkTable]
-    {
-      auto  pipeline{ Rpi2959::CreatePipeline(i, networkTable) };
-      frc::VisionRunner<decltype(pipeline)>{StartCamera(cameraConfig), &pipeline, [](decltype(pipeline) &p){ }}.RunForever();
-    }));
-
+  // This is also testing code...it starts the Raspberry PI to perform all processing front and back.
+  // DEFINITELY REMOVE once debugging is complete.
   if(Rpi2959::server)
-      networkTable->PutNumber(Rpi2959Shared::Keys::FrontTargets, (double)Rpi2959Shared::ProcessingTargets::PortTape);
+  {
+    networkTable->PutNumber(Rpi2959Shared::Keys::FrontTargets, (double)15.0);
+    networkTable->PutNumber(Rpi2959Shared::Keys::BackTargets, (double)15.0);
+  }
+  
+  std::vector<std::thread>      threads;          // Will hold one thread per camera config
+  threads.reserve(Rpi2959::cameraConfigs.size()); // Preallocate the space that we know that we will need
 
+  // For each cameraConfig, create a thread with a pipeline to run image analysis
+  std::transform(begin(Rpi2959::cameraConfigs), end(Rpi2959::cameraConfigs), std::back_inserter(threads),
+    [&outs, &networkTable](auto& cameraConfig)
+    {
+      return std::thread([&outs, &cameraConfig, &networkTable]
+      {
+        auto  pipeline{ Rpi2959::CreatePipeline(cameraConfig.name, networkTable) };
+        frc::VisionRunner<decltype(pipeline)>{ StartCamera(cameraConfig), &pipeline, [](decltype(pipeline)&){ } }.RunForever();
+      });
+    });
+
+  // Wait for each thread to finish.  Since no thread will ever finish, we will never complete this
+  // for loop.  However, the application exits if we don't block, and we don't want to waste
+  // processor cycles with a "while(true);" loop
   for(auto& thread : threads)
     thread.join();
+
+  // Quit listening to the network table changes (though we should never get here).
+  networkTable->RemoveEntryListener(listener);
+
+  // Exit the program with success
   return EXIT_SUCCESS;
 }
 
@@ -145,23 +155,25 @@ namespace Rpi2959
 {
   wpi::raw_ostream& ParseError() { return wpi::errs() << "config error in '" << configFile << "': "; }
 
-  Pipeline CreatePipeline(size_t index, std::shared_ptr<nt::NetworkTable> networkTable)
+  Pipeline CreatePipeline(std::string name, std::shared_ptr<nt::NetworkTable> networkTable)
   {
-    switch(index)
-    {
-      case 0:
-        return Pipeline{networkTable, Rpi2959Shared::Keys::FrontTargets,
-          Rpi2959Shared::Keys::FrontFrameNumber,  Rpi2959Shared::Keys::FrontCargoResults,
-          Rpi2959Shared::Keys::FrontFloorTapeResults,  Rpi2959Shared::Keys::FrontHatchResults,
-          Rpi2959Shared::Keys::FrontPortTapeResults};
-      case 1:
-        return Pipeline{networkTable, Rpi2959Shared::Keys::BackTargets,
-          Rpi2959Shared::Keys::BackFrameNumber,  Rpi2959Shared::Keys::BackCargoResults,
-          Rpi2959Shared::Keys::BackFloorTapeResults,  Rpi2959Shared::Keys::BackHatchResults,
+      // Make name text lower case
+      std::transform(begin(name), end(name), begin(name), [](auto c) { return std::tolower(c); });
+      auto  isFront{ name.find("back") == -1 };  // If the name does not contain "back" text, then we are a front camera
+      return CreatePipeline(isFront, std::move(networkTable));
+  }
+
+  Pipeline CreatePipeline(bool isFront, std::shared_ptr<nt::NetworkTable> networkTable)
+  {
+      return isFront ? 
+        Pipeline{networkTable, Rpi2959Shared::Keys::FrontTargets,
+          Rpi2959Shared::Keys::FrontFrameNumber, Rpi2959Shared::Keys::FrontCargoResults,
+          Rpi2959Shared::Keys::FrontFloorTapeResults, Rpi2959Shared::Keys::FrontHatchResults,
+          Rpi2959Shared::Keys::FrontPortTapeResults} :
+        Pipeline{networkTable, Rpi2959Shared::Keys::BackTargets,
+          Rpi2959Shared::Keys::BackFrameNumber, Rpi2959Shared::Keys::BackCargoResults,
+          Rpi2959Shared::Keys::BackFloorTapeResults, Rpi2959Shared::Keys::BackHatchResults,
           Rpi2959Shared::Keys::BackPortTapeResults};
-      default:
-        throw std::runtime_error{"Invalid camera index"};
-    }
   }
 
   std::string GetValueText(std::shared_ptr<nt::Value> value)

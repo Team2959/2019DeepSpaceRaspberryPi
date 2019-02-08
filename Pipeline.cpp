@@ -51,6 +51,7 @@ cv::Rect2d Rpi2959::Pipeline::FindCargo(const cv::Mat& mat)
 
 std::tuple<cv::Point2d, cv::Point2d> Rpi2959::Pipeline::FindFloorTape(const cv::Mat& mat)
 {
+    // Not implemented
 return std::make_tuple(cv::Point2d{}, cv::Point2d{});
 }
 
@@ -119,8 +120,8 @@ std::tuple<cv::Point2d, cv::Point2d> Rpi2959::Pipeline::FindPortTape(const cv::M
 
 cv::Rect2d Rpi2959::Pipeline::FindHatch(const cv::Mat& mat)
 {
+    // Not implemented
     return cv::Rect2d{};
-
 }
 
 cv::Point2f Rpi2959::Pipeline::FindLeftPoint(const std::array<cv::Point2f, 4>& points)
@@ -137,7 +138,7 @@ cv::Point2f Rpi2959::Pipeline::FindLeftPoint(const std::array<cv::Point2f, 4>& p
  
  cv::Point2f Rpi2959::Pipeline::FindTopPoint(const std::array<cv::Point2f, 4>& points)
  {
-cv::Point2f result{ points[0] };
+    cv::Point2f result{ points[0] };
     for(auto i = 1; i < points.size(); ++i)
     {
         auto&   point{points[i]};
@@ -146,9 +147,10 @@ cv::Point2f result{ points[0] };
     }
     return result;
  }
+
  cv::Point2f Rpi2959::Pipeline::FindRightPoint(const std::array<cv::Point2f, 4>& points)
  {
-cv::Point2f result{ points[0] };
+    cv::Point2f result{ points[0] };
     for(auto i = 1; i < points.size(); ++i)
     {
         auto&   point{points[i]};
@@ -157,9 +159,10 @@ cv::Point2f result{ points[0] };
     }
     return result;
  }
+
  cv::Point2f Rpi2959::Pipeline::FindBottomPoint(const std::array<cv::Point2f, 4>& points)
  {
-cv::Point2f result{ points[0] };
+    cv::Point2f result{ points[0] };
     for(auto i = 1; i < points.size(); ++i)
     {
         auto&   point{points[i]};
@@ -169,22 +172,22 @@ cv::Point2f result{ points[0] };
     return result;
  }
 
- Rpi2959::Pipeline::OrientedPoints Rpi2959::Pipeline::GetOrientedPoints(const std::array<cv::Point2f, 4>& points)
- {
-   return OrientedPoints{ FindLeftPoint(points), FindTopPoint(points), FindRightPoint(points), FindBottomPoint(points) };
- }
- float Rpi2959::Pipeline::GetDistance(const cv::Point& pt1, const cv::Point& pt2)
- {
-     auto    xDistance{ (pt1.x - pt2.x) };
+Rpi2959::Pipeline::OrientedPoints Rpi2959::Pipeline::GetOrientedPoints(const std::array<cv::Point2f, 4>& points)
+{
+    return OrientedPoints{ FindLeftPoint(points), FindTopPoint(points), FindRightPoint(points), FindBottomPoint(points) };
+}
+
+float Rpi2959::Pipeline::GetDistance(const cv::Point& pt1, const cv::Point& pt2)
+{
+    auto    xDistance{ (pt1.x - pt2.x) };
     auto    yDistance{ (pt1.y - pt2.y) };
     return std::sqrt(xDistance * xDistance + yDistance * yDistance);
- }
- float Rpi2959::Pipeline::GetArea(const OrientedPoints& points)
- {
-return GetDistance(points.TopPoint, points.LeftPoint) *
-        GetDistance(points.TopPoint, points.RightPoint);
- }
+}
 
+float Rpi2959::Pipeline::GetArea(const OrientedPoints& points)
+{
+    return GetDistance(points.TopPoint, points.LeftPoint) * GetDistance(points.TopPoint, points.RightPoint);
+}
 
 cv::Point2d Rpi2959::Pipeline::GetRelativePoint(const cv::Point& point, const cv::Mat& mat)
 {
@@ -199,8 +202,14 @@ cv::Rect2d Rpi2959::Pipeline::GetRelativeRect(const cv::Rect& rect, const cv::Ma
 
 void Rpi2959::Pipeline::Process(cv::Mat& mat)
 {
+    //  Update our frame number.  The RoboRio can watch for these changes and know that we are still alive
     m_networkTable->PutNumber(m_frameNumberKey, ++m_frameNumber);
+
+    // Get the targets to examine
     auto    targets{ static_cast<Rpi2959Shared::ProcessingTargets>(m_networkTable->GetNumber(m_targetsKey, 0.0)) };
+
+    // For each target type, see if the RoboRio wants it.  If so, perform the calculations.  Otherwise,
+    // Clear the result.
     if((targets & Rpi2959Shared::ProcessingTargets::Cargo) == Rpi2959Shared::ProcessingTargets::Cargo)
         m_networkTable->PutNumberArray(m_cargoResultsKey, AsArrayRef(FindCargo(mat)));
     else
@@ -217,6 +226,4 @@ void Rpi2959::Pipeline::Process(cv::Mat& mat)
         m_networkTable->PutNumberArray(m_hatchResultsKey, AsArrayRef(FindHatch(mat)));
     else
         m_networkTable->Delete(m_hatchResultsKey);
-
-
 }
