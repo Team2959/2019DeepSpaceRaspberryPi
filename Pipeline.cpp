@@ -31,18 +31,22 @@ cv::Rect2d Rpi2959::Pipeline::FindCargo(const cv::Mat& mat)
     cv::Mat     threshold;
     cv::inRange(hsvImage, cv::Scalar(0, 128, 64), cv::Scalar(60, 255, 196), threshold);
 
+    // get the contours for each threshold area
     std::vector<std::vector<cv::Point>> contours;
-
-    // get the bounding pixels for each area that were the in range 
     cv::findContours(threshold, contours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
 
     cv::Rect    largestRect;
+    auto        largestArea{ 0.0 };
 
     for(auto& contour : contours)
     {
         auto    rect{cv::boundingRect(contour)};    // change the contour pixels to be a rectangle
-        if(largestRect.area() < rect.area())        // keep the largest rect
+        auto    area{rect.area()};                  // Get the area
+        if(largestArea < area)                      // keep the largest rect
+        {
             largestRect = rect;
+            largestArea = area;
+        }
     }
     
     // Convert largest rect in pixel offset coordinates to frame relative coordinates.
