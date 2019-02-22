@@ -69,10 +69,10 @@ int main(int argc, char* argv[])
   // This does not need to be in the final release, once debugging is complete
   auto  listener{ networkTable->AddEntryListener([&outs](auto table, auto name, auto entry, auto value, auto flags)
   {
-    /*std::string s{name};
+    std::string s{name};
 
-     if((s.find("FrameNumber") != -1)||(s.find("CargoResults") != -1))
-      return; */
+    if(s != std::string{ Rpi2959Shared::Keys::FrontCargoResults })
+      return;
     if(flags & nt::EntryListenerFlags::kDelete)
       (outs << "Key Deleted - " << name << '\n').flush();
     else if(flags & nt::EntryListenerFlags::kNew)
