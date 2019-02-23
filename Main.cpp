@@ -13,7 +13,7 @@
 #include <wpi/json.h>
 #include <wpi/raw_istream.h>
 #include <wpi/raw_ostream.h>
-#include "../2019RaspPIRoboRioShared/SharedNames.h"
+#include "../2019RaspPIRoboRioShared/Shared.hpp"
 #include "Pipeline.hpp"
 
 namespace Rpi2959

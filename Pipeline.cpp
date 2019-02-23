@@ -7,8 +7,9 @@
 #include <networktables/NetworkTable.h>
 #include <opencv2/opencv.hpp>
 #include <vision/VisionPipeline.h>
-#include "../2019RaspPIRoboRioShared/SharedNames.h"
+#include <wpi/raw_ostream.h>
 #include "Pipeline.hpp"
+#include "Analyzer.hpp"
 
 Rpi2959::Pipeline::Pipeline(std::shared_ptr<nt::NetworkTable> networkTable, wpi::StringRef targetsKey,
   wpi::StringRef frameNumberKey, wpi::StringRef cargoResultsKey, wpi::StringRef floorTapeResultsKey,
@@ -19,215 +20,60 @@ Rpi2959::Pipeline::Pipeline(std::shared_ptr<nt::NetworkTable> networkTable, wpi:
   m_hatchResultsKey{ std::move( hatchResultsKey ) },
   m_portTapeResultsKey{ std::move( portTapeResultsKey ) } { }
 
-cv::Rect2d Rpi2959::Pipeline::FindCargo(const cv::Mat& mat)
-{
-    cv::Mat hsvImage;
-
-    // convert from Red-Green-Blue to Hue-Saturation-Value
-    cv::cvtColor(mat, hsvImage, cv::ColorConversionCodes::COLOR_BGR2HSV);
-
-    //  Find only pixel that are in range of the HSV value
-    //   in this case orange (0-60) with upper half saturations and upper half values
-    cv::Mat     threshold;
-    cv::inRange(hsvImage, cv::Scalar(0, 128, 64), cv::Scalar(60, 255, 196), threshold);
-
-    // get the contours for each threshold area
-    std::vector<std::vector<cv::Point>> contours;
-    cv::findContours(threshold, contours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
-
-    cv::Rect    largestRect;
-    auto        largestArea{ 0.0 };
-
-    for(auto& contour : contours)
-    {
-        auto    rect{cv::boundingRect(contour)};    // change the contour pixels to be a rectangle
-        auto    area{rect.area()};                  // Get the area
-        if(largestArea < area)                      // keep the largest rect
-        {
-            largestRect = rect;
-            largestArea = area;
-        }
-    }
-    
-    // Convert largest rect in pixel offset coordinates to frame relative coordinates.
-    return GetRelativeRect(largestRect, mat);
-}
-
-std::tuple<cv::Point2d, cv::Point2d> Rpi2959::Pipeline::FindFloorTape(const cv::Mat& mat)
-{
-    // Not implemented
-return std::make_tuple(cv::Point2d{}, cv::Point2d{});
-}
-
-std::tuple<cv::Point2d, cv::Point2d> Rpi2959::Pipeline::FindPortTape(const cv::Mat& mat)
-{
-/*    // Convert to grayscale
-    cv::Mat gray;
-    cv::cvtColor(mat, gray, CV_BGR2GRAY); */
-
-    // Angle boundaries for differentiating between left and right
-    constexpr double LeftSideAngle = -67.5;
-    constexpr double RightSideAngle = -22.5;
-    constexpr double AngleRange = 15.0;
-    constexpr double LeftSideAngleMin = LeftSideAngle - AngleRange ;
-    constexpr double LeftSideAngleMax = LeftSideAngle + AngleRange ;
-    constexpr double RightSideAngleMin = RightSideAngle - AngleRange ;
-    constexpr double RightSideAngleMax = RightSideAngle + AngleRange ;
-
-    cv::Mat hsvImage;
-
-    // convert from Red-Green-Blue to Hue-Saturation-Value
-    cv::cvtColor(mat, hsvImage, cv::ColorConversionCodes::COLOR_BGR2HSV);
-
-    //  Find only pixel that are in range of the HSV value
-    //   in this case green (40-80) with upper half saturations and upper half values
-    cv::Mat     threshold;
-    cv::inRange(hsvImage, cv::Scalar(40, 128, 64), cv::Scalar(80, 255, 196), threshold);
-
-    // extract contours
-    std::vector<std::vector<cv::Point>> contours;
-    cv::findContours(threshold, contours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
-
-    cv::RotatedRect leftTape;
-    cv::RotatedRect rightTape;
-    float           leftArea{ 0.0f };
-    float           rightArea{ 0.0f };
-
-    // Go through each countor
-    for(auto& contour : contours)
-    {
-        // fit bounding rectangle around contour
-        cv::RotatedRect rotatedRect = cv::minAreaRect(contour);
-
-        // read points and angle
-        std::array<cv::Point2f, 4> rect_points; 
-        rotatedRect.points( rect_points.data() );
-
-        auto    orientedPoints{ GetOrientedPoints(rect_points) };
-        auto    rectArea{GetArea(orientedPoints)};
-        
-        // See if rect is a left side tape image
-        if((LeftSideAngleMin <= rotatedRect.angle)&&(rotatedRect.angle <= LeftSideAngleMax))
-        {
-            if(rectArea > leftArea)
-                leftTape = rotatedRect;
-        }
-        // See if rect is a right side tape image
-        else if((RightSideAngleMin <= rotatedRect.angle)&&(rotatedRect.angle <= RightSideAngleMax))
-        {
-            if(rectArea > rightArea)
-                rightTape = rotatedRect;
-        }            
-    }
-    return std::make_tuple(GetRelativePoint(leftTape.center, mat), GetRelativePoint(rightTape.center,mat));
-}
-
-cv::Rect2d Rpi2959::Pipeline::FindHatch(const cv::Mat& mat)
-{
-    // Not implemented
-    return cv::Rect2d{};
-}
-
-cv::Point2f Rpi2959::Pipeline::FindLeftPoint(const std::array<cv::Point2f, 4>& points)
-{
-    cv::Point2f result{ points[0] };
-    for(auto i = 1; i < points.size(); ++i)
-    {
-        auto&   point{points[i]};
-        if(result.x > point.x)
-            result = point;
-    }
-    return result;
- }
- 
- cv::Point2f Rpi2959::Pipeline::FindTopPoint(const std::array<cv::Point2f, 4>& points)
- {
-    cv::Point2f result{ points[0] };
-    for(auto i = 1; i < points.size(); ++i)
-    {
-        auto&   point{points[i]};
-        if(result.y > point.y)
-            result = point;
-    }
-    return result;
- }
-
- cv::Point2f Rpi2959::Pipeline::FindRightPoint(const std::array<cv::Point2f, 4>& points)
- {
-    cv::Point2f result{ points[0] };
-    for(auto i = 1; i < points.size(); ++i)
-    {
-        auto&   point{points[i]};
-        if(result.x < point.x)
-            result = point;
-    }
-    return result;
- }
-
- cv::Point2f Rpi2959::Pipeline::FindBottomPoint(const std::array<cv::Point2f, 4>& points)
- {
-    cv::Point2f result{ points[0] };
-    for(auto i = 1; i < points.size(); ++i)
-    {
-        auto&   point{points[i]};
-        if(result.y < point.y)
-            result = point;
-    }
-    return result;
- }
-
-Rpi2959::Pipeline::OrientedPoints Rpi2959::Pipeline::GetOrientedPoints(const std::array<cv::Point2f, 4>& points)
-{
-    return OrientedPoints{ FindLeftPoint(points), FindTopPoint(points), FindRightPoint(points), FindBottomPoint(points) };
-}
-
-float Rpi2959::Pipeline::GetDistance(const cv::Point& pt1, const cv::Point& pt2)
-{
-    auto    xDistance{ (pt1.x - pt2.x) };
-    auto    yDistance{ (pt1.y - pt2.y) };
-    return std::sqrt(xDistance * xDistance + yDistance * yDistance);
-}
-
-float Rpi2959::Pipeline::GetArea(const OrientedPoints& points)
-{
-    return GetDistance(points.TopPoint, points.LeftPoint) * GetDistance(points.TopPoint, points.RightPoint);
-}
-
-cv::Point2d Rpi2959::Pipeline::GetRelativePoint(const cv::Point& point, const cv::Mat& mat)
-{
-    return cv::Point2d{ static_cast<double>(point.x) / mat.cols, static_cast<double>(point.y) / mat.rows };
-}
-
-cv::Rect2d Rpi2959::Pipeline::GetRelativeRect(const cv::Rect& rect, const cv::Mat& mat)
-{
-    return cv::Rect2d{ static_cast<double>(rect.x) / mat.cols, static_cast<double>(rect.y) / mat.rows,
-        static_cast<double>(rect.width) / mat.cols, static_cast<double>(rect.height) / mat.rows };
-}
-
 void Rpi2959::Pipeline::Process(cv::Mat& mat)
 {
     //  Update our frame number.  The RoboRio can watch for these changes and know that we are still alive
     m_networkTable->PutNumber(m_frameNumberKey, ++m_frameNumber);
 
+    // Output a console message
+    wpi::errs() << "Processing frame " << m_frameNumber << "\n";
+
     // Get the targets to examine
     auto    targets{ static_cast<Rpi2959Shared::ProcessingTargets>(m_networkTable->GetNumber(m_targetsKey, 0.0)) };
 
+    // Make our analyzer
+    Analyzer    analyzer{ mat };
+
     // For each target type, see if the RoboRio wants it.  If so, perform the calculations.  Otherwise,
     // Clear the result.
-    if((targets & Rpi2959Shared::ProcessingTargets::Cargo) == Rpi2959Shared::ProcessingTargets::Cargo)
-        m_networkTable->PutNumberArray(m_cargoResultsKey, AsArrayRef(FindCargo(mat)));
+    if(IncludesTarget(targets, Rpi2959Shared::ProcessingTargets::Cargo))
+    {
+        auto    cargoRect{analyzer.FindCargo()};
+        if(std::get<1>(cargoRect))
+            m_networkTable->PutNumberArray(m_cargoResultsKey, AsArrayRef(std::get<0>(cargoRect)));
+        else
+            m_networkTable->Delete(m_cargoResultsKey);
+    }
     else
         m_networkTable->Delete(m_cargoResultsKey);
-    if((targets & Rpi2959Shared::ProcessingTargets::PortTape) == Rpi2959Shared::ProcessingTargets::PortTape)
-        m_networkTable->PutNumberArray(m_portTapeResultsKey, AsArrayRef(FindPortTape(mat)));
+    if(IncludesTarget(targets, Rpi2959Shared::ProcessingTargets::PortTape))
+    {
+        auto    tapePoints{analyzer.FindPortTape()};
+        if(std::get<2>(tapePoints))
+            m_networkTable->PutNumberArray(m_cargoResultsKey, AsArrayRef(std::make_tuple(std::get<0>(tapePoints), std::get<1>(tapePoints))));
+        else
+            m_networkTable->Delete(m_cargoResultsKey);
+    }
     else
         m_networkTable->Delete(m_portTapeResultsKey);
-    if((targets & Rpi2959Shared::ProcessingTargets::FloorTape) == Rpi2959Shared::ProcessingTargets::FloorTape)
-        m_networkTable->PutNumberArray(m_floorTapeResultsKey, AsArrayRef(FindFloorTape(mat)));
+    if(IncludesTarget(targets, Rpi2959Shared::ProcessingTargets::FloorTape))
+    {
+        auto    tapePoints{analyzer.FindFloorTape()};
+        if(std::get<2>(tapePoints))
+            m_networkTable->PutNumberArray(m_floorTapeResultsKey, AsArrayRef(std::make_tuple(std::get<0>(tapePoints), std::get<1>(tapePoints))));
+        else
+            m_networkTable->Delete(m_floorTapeResultsKey);
+    }
     else
         m_networkTable->Delete(m_floorTapeResultsKey);
-    if((targets & Rpi2959Shared::ProcessingTargets::Hatch) == Rpi2959Shared::ProcessingTargets::Hatch)
-        m_networkTable->PutNumberArray(m_hatchResultsKey, AsArrayRef(FindHatch(mat)));
+    if(IncludesTarget(targets, Rpi2959Shared::ProcessingTargets::Hatch))
+    {
+        auto    hatchRect{analyzer.FindCargo()};
+        if(std::get<1>(hatchRect))
+            m_networkTable->PutNumberArray(m_hatchResultsKey, AsArrayRef(std::get<0>(hatchRect)));
+        else
+            m_networkTable->Delete(m_hatchResultsKey);
+    }
     else
         m_networkTable->Delete(m_hatchResultsKey);
 }

@@ -28,6 +28,7 @@
         "type_traits": "cpp",
         "typeinfo": "cpp",
         "functional": "cpp",
-        "*.inc": "cpp"
+        "*.inc": "cpp",
+        "cmath": "cpp"
     }
 }

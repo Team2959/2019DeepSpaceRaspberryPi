@@ -35,8 +35,8 @@ clean:
 # there should be one .o file for each .cpp file in the project
 # below that are all the linker command line parameters, consisting mostly of all
 # the possible libraries that we might use
-${EXE}: build/Main.o build/Pipeline.o
-	${CXX} -pthread -o $@ build/Main.o build/Pipeline.o \
+${EXE}: build/Analyzer.o build/Main.o build/Pipeline.o
+	${CXX} -pthread -o $@ build/Main.o build/Analyzer.o build/Pipeline.o \
 	    -LTools/lib \
 	    -lwpilibc \
 	    -lwpiHal \
@@ -61,10 +61,14 @@ ${EXE}: build/Main.o build/Pipeline.o
 	    -lopencv_flann \
 	    -lopencv_core
 
+# The command line to get from Analyzer.cpp to build/Analyzer.o
+build/Analyzer.o: Analyzer.cpp
+	${CXX} -pthread -O -c -o $@ -ITools/include $<
+
 # The command line to get from Main.cpp to build/Main.o
 build/Main.o: Main.cpp
 	${CXX} -pthread -O -c -o $@ -ITools/include $<
-	
+
 # The command line to build build/Pipeline.o from Pipeline.cpp
 build/Pipeline.o: Pipeline.cpp
 	${CXX} -pthread -O -c -o $@ -ITools/include $<
