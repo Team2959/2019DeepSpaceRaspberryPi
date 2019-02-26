@@ -14,10 +14,9 @@ std::tuple<cv::Rect2d, bool> Rpi2959::Analyzer::FindCargo() const
     // convert from Red-Green-Blue to Hue-Saturation-Value
     cv::cvtColor(_mat, hsvImage, cv::ColorConversionCodes::COLOR_BGR2HSV);
 
-    // Find only pixels that are in range of the HSV value
-    // in this case orange [7,22] with upper half saturations [128,255] and middle half values [64,192]
+    // Find only pixels that are in range of the HSV coordinates
     cv::Mat     threshold;
-    cv::inRange(hsvImage, cv::Scalar(7, 128, 64), cv::Scalar(22, 255, 255), threshold);
+    cv::inRange(hsvImage, cv::Scalar(6, 100, 140), cv::Scalar(20, 255, 255), threshold);
 
     // get the contours for each threshold area
     Contours_t contours;
@@ -47,18 +46,17 @@ std::tuple<cv::Point2d, cv::Point2d, bool> Rpi2959::Analyzer::FindPortTape() con
     constexpr double RightSideAngleMin{ RightSideAngle - AngleRange };
     constexpr double RightSideAngleMax{ RightSideAngle + AngleRange };
 
-    cv::Mat hsvImage;
+    cv::Mat gray;
 
-    // convert from Red-Green-Blue to Hue-Saturation-Value
-    cv::cvtColor(_mat, hsvImage, cv::ColorConversionCodes::COLOR_BGR2HSV);
+    // Convert to grayscale
+    cv::cvtColor(_mat, gray, cv::ColorConversionCodes::COLOR_BGR2GRAY);
 
-    //  Find only pixel that are in range of the HSV value
-    //   in this case green (40-80) with upper half saturations and upper half values
+    //  Find only the brightest pixels
     cv::Mat     threshold;
-    cv::inRange(hsvImage, cv::Scalar(40, 128, 64), cv::Scalar(80, 255, 196), threshold);
+    cv::inRange(gray, cv::Scalar(240, 0, 0), cv::Scalar(255, 0, 0), threshold);
 
     // extract contours
-    std::vector<std::vector<cv::Point>> contours;
+    Contours_t  contours;
     cv::findContours(threshold, contours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
 
     if(contours.size() == 0)
@@ -95,7 +93,16 @@ std::tuple<cv::Point2d, cv::Point2d, bool> Rpi2959::Analyzer::FindPortTape() con
                 rightTape = rotatedRect;
         }            
     }
-    return std::make_tuple(cv::Point2d{leftTape.center.x, leftTape.center.y}, cv::Point2d{rightTape.center.x, rightTape.center.y}, true);
+
+    // If no left tape or no right tape
+    if((leftTape.center == cv::Point2f{})||(rightTape.center == cv::Point2f{}))
+        return std::make_tuple(cv::Point2d{}, cv::Point2d{}, false);
+
+    // Get our frame relative tape
+    auto    relativePoints{GetRelativePointPair(std::make_tuple(leftTape.center, rightTape.center))};
+
+    // Return the results
+    return std::make_tuple(std::get<0>(relativePoints), std::get<1>(relativePoints), true);
 }
 
 std::tuple<cv::Rect2d, bool> Rpi2959::Analyzer::FindHatch() const
