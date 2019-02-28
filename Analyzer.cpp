@@ -37,15 +37,6 @@ std::tuple<cv::Point2d, cv::Point2d, bool> Rpi2959::Analyzer::FindFloorTape() co
 
 std::tuple<cv::Point2d, cv::Point2d, bool> Rpi2959::Analyzer::FindPortTape() const
 {
-    // Angle boundaries for differentiating between left and right
-    constexpr double LeftSideAngle{ -67.5 };
-    constexpr double RightSideAngle{ -22.5 };
-    constexpr double AngleRange{ 15.0 };
-    constexpr double LeftSideAngleMin{ LeftSideAngle - AngleRange };
-    constexpr double LeftSideAngleMax{ LeftSideAngle + AngleRange };
-    constexpr double RightSideAngleMin{ RightSideAngle - AngleRange };
-    constexpr double RightSideAngleMax{ RightSideAngle + AngleRange };
-
     cv::Mat gray;
 
     // Convert to grayscale
@@ -53,53 +44,18 @@ std::tuple<cv::Point2d, cv::Point2d, bool> Rpi2959::Analyzer::FindPortTape() con
 
     //  Find only the brightest pixels
     cv::Mat     threshold;
-    cv::inRange(gray, cv::Scalar(240, 0, 0), cv::Scalar(255, 0, 0), threshold);
+    cv::inRange(gray, cv::Scalar(210, 0, 0), cv::Scalar(255, 0, 0), threshold);
 
     // extract contours
     Contours_t  contours;
     cv::findContours(threshold, contours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
 
-    if(contours.size() == 0)
+    // If fewer than two contours, we have no solution
+    if(contours.size() < 2)
         return std::make_tuple(cv::Point2d{}, cv::Point2d{}, false);
 
-    cv::RotatedRect leftTape;
-    cv::RotatedRect rightTape;
-    double          leftArea{ 0.0f };
-    double          rightArea{ 0.0f };
-
-    // Go through each contour
-    for(auto& contour : contours)
-    {
-        // fit bounding rectangle around contour
-        cv::RotatedRect rotatedRect{ cv::minAreaRect(contour) };
-
-        // read points and angle
-        std::array<cv::Point2f, 4> rect_points; 
-        rotatedRect.points( rect_points.data() );
-
-        auto    orientedPoints{ GetOrientedPoints(rect_points) };
-        auto    rectArea{GetArea(orientedPoints)};
-        
-        // See if rect is a left side tape image
-        if((LeftSideAngleMin <= rotatedRect.angle)&&(rotatedRect.angle <= LeftSideAngleMax))
-        {
-            if(rectArea > leftArea)
-                leftTape = rotatedRect;
-        }
-        // See if rect is a right side tape image
-        else if((RightSideAngleMin <= rotatedRect.angle)&&(rotatedRect.angle <= RightSideAngleMax))
-        {
-            if(rectArea > rightArea)
-                rightTape = rotatedRect;
-        }            
-    }
-
-    // If no left tape or no right tape
-    if((leftTape.center == cv::Point2f{})||(rightTape.center == cv::Point2f{}))
-        return std::make_tuple(cv::Point2d{}, cv::Point2d{}, false);
-
-    // Get our frame relative tape
-    auto    relativePoints{GetRelativePointPair(std::make_tuple(leftTape.center, rightTape.center))};
+    // Get our frame relative tape centers
+    auto    relativePoints{GetRelativePointPair(GetTapeCenters(contours))};
 
     // Return the results
     return std::make_tuple(std::get<0>(relativePoints), std::get<1>(relativePoints), true);
@@ -126,4 +82,17 @@ cv::Rect Rpi2959::Analyzer::GetLargestContourBoundingRect(const Contours_t& cont
         largestArea = area;
     }
     return largestRect;                             // Return the largest
+}
+
+Rpi2959::Analyzer::PointPair_t<cv::Point2d> Rpi2959::Analyzer::GetTapeCenters(const Contours_t& contours)
+{
+    // Convert contours to rotated bounding rects
+    std::vector<cv::RotatedRect>    rects;
+    std::transform(begin(contours), end(contours), back_inserter(rects), [](const Contour_t& contour) { return cv::minAreaRect(contour); });
+
+    // Sort them in descending order based on size.
+    std::sort(begin(rects), end(rects), [](const cv::RotatedRect& left, const cv::RotatedRect& right) { return left.size.area() > right.size.area(); });
+
+    // Return the leftmost one first, then the rightmost one
+    return (rects[0].center.x < rects[1].center.x) ? std::make_tuple(rects[0].center, rects[1].center) : std::make_tuple(rects[1].center, rects[0].center);
 }
