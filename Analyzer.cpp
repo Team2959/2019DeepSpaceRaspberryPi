@@ -17,10 +17,12 @@ std::tuple<cv::Rect2d, bool> Rpi2959::Analyzer::FindCargo() const
     // Find only pixels that are in range of the HSV coordinates
     cv::Mat     threshold;
     cv::inRange(hsvImage, cv::Scalar(6, 100, 140), cv::Scalar(20, 255, 255), threshold);
+    hsvImage.release();     // Done with hsvImage
 
     // get the contours for each threshold area
     Contours_t contours;
     cv::findContours(threshold, contours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
+    threshold.release();    // Done with threshold
 
     if(contours.size() == 0)
         return std::make_tuple(cv::Rect2d{}, false);
@@ -44,11 +46,20 @@ std::tuple<cv::Point2d, cv::Point2d, bool> Rpi2959::Analyzer::FindPortTape() con
 
     //  Find only the brightest pixels
     cv::Mat     threshold;
-    cv::inRange(gray, cv::Scalar(210, 0, 0), cv::Scalar(255, 0, 0), threshold);
+    cv::inRange(gray, cv::Scalar(128, 0, 0), cv::Scalar(255, 0, 0), threshold);
+    gray.release();         // Done with gray
+
+    cv::imwrite("O1.png",threshold);
+
+    // Erode the image...tends to eliminate small discontiguous elements
+    cv::erode(threshold, threshold, cv::Mat{});
+
+    cv::imwrite("O2.png",threshold);
 
     // extract contours
     Contours_t  contours;
     cv::findContours(threshold, contours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
+    threshold.release();    // Done with threshold
 
     // If fewer than two contours, we have no solution
     if(contours.size() < 2)
