@@ -9,6 +9,7 @@
 
 std::tuple<cv::Rect2d, bool> Rpi2959::Analyzer::FindCargo() const
 {
+    // Will hold our hsv image
     cv::Mat hsvImage;
 
     // convert from Red-Green-Blue to Hue-Saturation-Value
@@ -39,6 +40,7 @@ std::tuple<cv::Point2d, cv::Point2d, bool> Rpi2959::Analyzer::FindFloorTape() co
 
 std::tuple<cv::Point2d, cv::Point2d, bool> Rpi2959::Analyzer::FindPortTape() const
 {
+    // Will hold our grayscale image
     cv::Mat gray;
 
     // Convert to grayscale
@@ -49,27 +51,23 @@ std::tuple<cv::Point2d, cv::Point2d, bool> Rpi2959::Analyzer::FindPortTape() con
     cv::inRange(gray, cv::Scalar(128, 0, 0), cv::Scalar(255, 0, 0), threshold);
     gray.release();         // Done with gray
 
-    cv::imwrite("O1.png",threshold);
-
-    // Erode the image...tends to eliminate small discontiguous elements
+    // Erode the image...tends to eliminate small elements
     cv::erode(threshold, threshold, cv::Mat{});
-
-    cv::imwrite("O2.png",threshold);
 
     // extract contours
     Contours_t  contours;
     cv::findContours(threshold, contours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
     threshold.release();    // Done with threshold
 
-    // If fewer than two contours, we have no solution
-    if(contours.size() < 2)
+    // Get our tape centers
+    auto    centers{ GetTapeCenters(contours) };
+
+    // If an empty result, we have no solution
+    if(!std::get<2>(centers))
         return std::make_tuple(cv::Point2d{}, cv::Point2d{}, false);
 
-    // Get our frame relative tape centers
-    auto    relativePoints{GetRelativePointPair(GetTapeCenters(contours))};
-
-    // Return the results
-    return std::make_tuple(std::get<0>(relativePoints), std::get<1>(relativePoints), true);
+    // Convert from absolute coordinates to frame relative
+    return std::tuple_cat(GetRelativePointPair(std::make_tuple(std::get<0>(centers), std::get<1>(centers))), std::make_tuple(true));
 }
 
 std::tuple<cv::Rect2d, bool> Rpi2959::Analyzer::FindHatch() const
@@ -95,15 +93,79 @@ cv::Rect Rpi2959::Analyzer::GetLargestContourBoundingRect(const Contours_t& cont
     return largestRect;                             // Return the largest
 }
 
-Rpi2959::Analyzer::PointPair_t<cv::Point2d> Rpi2959::Analyzer::GetTapeCenters(const Contours_t& contours)
+std::tuple<cv::Point2d, cv::Point2d, bool> Rpi2959::Analyzer::GetTapeCenters(const Contours_t& contours) const
 {
+    // If we don't have enough contours, no need to do anything
+    if(contours.size() < 2)
+        return std::make_tuple(cv::Point2f{}, cv::Point2f{}, false);
+
     // Convert contours to rotated bounding rects
     std::vector<cv::RotatedRect>    rects;
-    std::transform(begin(contours), end(contours), back_inserter(rects), [](const Contour_t& contour) { return cv::minAreaRect(contour); });
 
-    // Sort them in descending order based on size.
-    std::sort(begin(rects), end(rects), [](const cv::RotatedRect& left, const cv::RotatedRect& right) { return left.size.area() > right.size.area(); });
+    // Convert all contours to rotated rects
+    std::transform(begin(contours),end(contours), back_inserter(rects), [](auto& contour) { return cv::minAreaRect(contour); });
 
-    // Return the leftmost one first, then the rightmost one
-    return (rects[0].center.x < rects[1].center.x) ? std::make_tuple(rects[0].center, rects[1].center) : std::make_tuple(rects[1].center, rects[0].center);
+    // Sort the rects by size in descening order
+    std::sort(begin(rects), end(rects), [](auto& left, auto& right) { return left.size.area() > right.size.area(); } );
+
+    // Get an area limit...we don't care about any rects that are smaller than this
+    auto    areaLimit{ rects[0].size.area() / 4.0 };
+
+    // Find the first rect that is smaller than the area limit
+    auto    iFirstSmall{ std::find_if(begin(rects), end(rects), [areaLimit](auto& rect) { return rect.size.area() < areaLimit; }) };
+
+    // Erase those rects that are too small.
+    rects.erase(iFirstSmall, end(rects));
+
+    // Sort the rects by size in order of distance from center
+    std::sort(begin(rects), end(rects), [this](auto& left, auto& right)
+    {
+        auto    leftDistance{ std::hypot(left.center.x - _mat.cols / 2, left.center.y - _mat.rows / 2) };
+        auto    rightDistance{ std::hypot(right.center.x - _mat.cols / 2, right.center.y - _mat.rows / 2) };
+        return leftDistance < rightDistance;
+    });
+
+    // Go through the rects, get our tape side, and find the next good match
+    for(auto& baseRect : rects)
+    {
+        auto    side{ GetTapeSide(baseRect) };  // Get our tape side
+        if(side == TapeSide::Unknown)           // If we can't tell which side, move on
+            continue;
+
+        // Find the first one that is outside our baseRect
+        if(side == TapeSide::Left)
+            for(auto& rect : rects)
+            {
+                if(rect.center.x > baseRect.center.x)
+                    return std::make_tuple(baseRect.center, rect.center, true); 
+            }
+        else
+            for(auto& rect : rects)
+            {
+                if(rect.center.x < baseRect.center.x)
+                    return std::make_tuple(rect.center, baseRect.center, true); 
+            }
+    }
+
+    // If we get here, there was nothing outside of our center rect.  No solution
+    return std::make_tuple(cv::Point2f{}, cv::Point2f{}, false);
+}
+
+Rpi2959::Analyzer::TapeSide Rpi2959::Analyzer::GetTapeSide(const cv::RotatedRect& rect) const
+{
+    // If the rect is not actually rotated, we can't tell
+    if(rect.angle == -90.0)
+        return TapeSide::Unknown;
+
+    // Will hold the points
+    std::array<cv::Point2f, 4>  vertices;
+
+    // Get the vertices
+    rect.points(vertices.data());
+
+    // Find the leftmost point
+    auto    iLeft{std::min_element(begin(vertices), end(vertices), [](auto& left, auto& right){ return left.x < right.x; })};
+
+    // We are left side tape if and only if the Y value for the leftmost verex is greater than the center Y value
+    return (iLeft->y > rect.center.y) ? TapeSide::Left : TapeSide::Right;
 }
