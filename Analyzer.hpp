@@ -10,10 +10,10 @@ namespace Rpi2959
     {
         public:
             Analyzer(const cv::Mat& mat) : _mat{ mat } { }
+            std::tuple<cv::Point2d, cv::Point2d, bool> FindFloorTape() const { return std::make_tuple(cv::Point2d{}, cv::Point2d{}, false); }   // Not implemented
+            std::tuple<cv::Rect2d, bool> FindHatch() const { return std::make_tuple(cv::Rect2d{}, false); } // Not implemented
             std::tuple<cv::Rect2d, bool> FindCargo() const;
-            std::tuple<cv::Point2d, cv::Point2d, bool> FindFloorTape() const;
             std::tuple<cv::Point2d, cv::Point2d, bool> FindPortTape() const;
-            std::tuple<cv::Rect2d, bool> FindHatch() const;
 
         private:
             using Contour_t = std::vector<cv::Point>;

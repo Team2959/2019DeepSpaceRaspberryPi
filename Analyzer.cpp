@@ -32,12 +32,6 @@ std::tuple<cv::Rect2d, bool> Rpi2959::Analyzer::FindCargo() const
     return std::make_tuple(GetRelativeRect(GetLargestContourBoundingRect(contours)), true);
 }
 
-std::tuple<cv::Point2d, cv::Point2d, bool> Rpi2959::Analyzer::FindFloorTape() const
-{
-    // Not implemented
-    return std::make_tuple(cv::Point2d{}, cv::Point2d{}, false);
-}
-
 std::tuple<cv::Point2d, cv::Point2d, bool> Rpi2959::Analyzer::FindPortTape() const
 {
     // Will hold our grayscale image
@@ -68,12 +62,6 @@ std::tuple<cv::Point2d, cv::Point2d, bool> Rpi2959::Analyzer::FindPortTape() con
 
     // Convert from absolute coordinates to frame relative
     return std::tuple_cat(GetRelativePointPair(std::make_tuple(std::get<0>(centers), std::get<1>(centers))), std::make_tuple(true));
-}
-
-std::tuple<cv::Rect2d, bool> Rpi2959::Analyzer::FindHatch() const
-{
-    // Not implemented
-    return std::make_tuple(cv::Rect2d{}, false);
 }
 
 cv::Rect Rpi2959::Analyzer::GetLargestContourBoundingRect(const Contours_t& contours)
