@@ -31,5 +31,6 @@
 *.out
 *.app
 
+/.vscode/*
 /Tools/*
 /Build/rpi2959
