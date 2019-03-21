@@ -42,7 +42,7 @@ std::tuple<cv::Point2d, cv::Point2d, bool> Rpi2959::Analyzer::FindPortTape() con
 
     //  Find only the brightest pixels
     cv::Mat     threshold;
-    cv::inRange(gray, cv::Scalar(128, 0, 0), cv::Scalar(255, 0, 0), threshold);
+    cv::inRange(gray, cv::Scalar(192, 0, 0), cv::Scalar(255, 0, 0), threshold);
     gray.release();         // Done with gray
 
     // Erode the image...tends to eliminate small elements
