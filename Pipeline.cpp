@@ -50,9 +50,9 @@ void Rpi2959::Pipeline::Process(cv::Mat& mat)
     {
         auto    tapePoints{analyzer.FindPortTape()};
         if(std::get<2>(tapePoints))
-            m_networkTable->PutNumberArray(m_cargoResultsKey, AsArrayRef(std::make_tuple(std::get<0>(tapePoints), std::get<1>(tapePoints))));
+            m_networkTable->PutNumberArray(m_portTapeResultsKey, AsArrayRef(std::make_tuple(std::get<0>(tapePoints), std::get<1>(tapePoints))));
         else
-            m_networkTable->Delete(m_cargoResultsKey);
+            m_networkTable->Delete(m_portTapeResultsKey);
     }
     else
         m_networkTable->Delete(m_portTapeResultsKey);
