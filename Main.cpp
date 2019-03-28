@@ -71,7 +71,7 @@ int main(int argc, char* argv[])
   {
     std::string s{name};
 
-    if(s != std::string{ Rpi2959Shared::Keys::FrontCargoResults })
+    if(s != std::string{ Rpi2959Shared::Keys::FrontPortTapeResults })
       return;
     if(flags & nt::EntryListenerFlags::kDelete)
       (outs << "Key Deleted - " << name << '\n').flush();
@@ -85,8 +85,8 @@ int main(int argc, char* argv[])
   // DEFINITELY REMOVE once debugging is complete.
   if(Rpi2959::server)
   {
-    networkTable->PutNumber(Rpi2959Shared::Keys::FrontTargets, (double)15.0);
-    networkTable->PutNumber(Rpi2959Shared::Keys::BackTargets, (double)15.0);
+    networkTable->PutNumber(Rpi2959Shared::Keys::FrontTargets, (double)Rpi2959Shared::ProcessingTargets::PortTape);  // Search for port tape only
+    // networkTable->PutNumber(Rpi2959Shared::Keys::BackTargets, (double)15.0);  Back camera not needed any longer
   }
   
   std::vector<std::thread>      threads;          // Will hold one thread per camera config
